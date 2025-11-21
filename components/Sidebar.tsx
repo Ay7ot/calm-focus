@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Brain, MessageSquare, Bell, LogOut, LayoutDashboard, ShieldCheck } from 'lucide-react'
-import { createClient } from '@/utils/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface SidebarProps {
@@ -13,19 +12,14 @@ interface SidebarProps {
 export default function Sidebar({ onNavigate }: SidebarProps = {}) {
   const pathname = usePathname()
   const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { isAdmin, loading } = useAuth()
 
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/'
     return pathname?.startsWith(path)
   }
 
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/login')
-    onNavigate?.()
-  }
+  // No longer needed – logout handled by /logout route
 
   const handleNavClick = () => {
     onNavigate?.()
@@ -37,6 +31,10 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
     { href: '/forum', label: 'Community', icon: MessageSquare },
     { href: '/reminders', label: 'Reminders', icon: Bell },
   ]
+
+  if (!loading && isAdmin) {
+    navItems.push({ href: '/admin', label: 'Admin', icon: ShieldCheck })
+  }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-surface-elevated border-r border-border flex flex-col">
@@ -71,34 +69,23 @@ export default function Sidebar({ onNavigate }: SidebarProps = {}) {
           )
         })}
 
-        {/* Admin Link - Only shown to admins */}
-        {isAdmin && (
-          <>
-            <div className="border-t border-border my-3"></div>
-            <Link
-              href="/admin"
-              onClick={handleNavClick}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${isActive('/admin')
-                ? 'bg-primary text-on-primary shadow-sm'
-                : 'text-on-surface-secondary hover:bg-backplate hover:text-on-surface'
-                }`}
-            >
-              <ShieldCheck size={20} />
-              Admin Panel
-            </Link>
-          </>
+        {loading && (
+          <div className="px-3 py-2.5">
+            <div className="h-5 bg-backplate rounded animate-pulse w-24"></div>
+          </div>
         )}
       </nav>
 
       {/* User Section */}
       <div className="p-4 border-t border-border">
-        <button
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-on-surface-secondary hover:bg-backplate hover:text-on-surface transition-all cursor-pointer"
+        <Link
+          href="/logout"
+          className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-on-surface-secondary hover:bg-backplate hover:text-on-surface transition-all"
+          onClick={onNavigate}
         >
           <LogOut size={20} />
           Logout
-        </button>
+        </Link>
       </div>
     </aside>
   )

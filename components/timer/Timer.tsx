@@ -51,8 +51,8 @@ export default function Timer() {
         <button
           onClick={() => setMode('focus')}
           className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-lg transition-all font-medium cursor-pointer ${mode === 'focus'
-              ? 'bg-primary text-on-primary shadow-md'
-              : 'text-on-surface-secondary hover:text-on-surface hover:bg-surface'
+            ? 'bg-primary text-on-primary shadow-md'
+            : 'text-on-surface-secondary hover:text-on-surface hover:bg-surface'
             }`}
         >
           <Brain size={18} className="sm:w-5 sm:h-5" />
@@ -61,8 +61,8 @@ export default function Timer() {
         <button
           onClick={() => setMode('break')}
           className={`flex-1 flex items-center justify-center gap-2 px-4 sm:px-6 py-3 rounded-lg transition-all font-medium cursor-pointer ${mode === 'break'
-              ? 'bg-secondary text-on-primary shadow-md'
-              : 'text-on-surface-secondary hover:text-on-surface hover:bg-surface'
+            ? 'bg-secondary text-on-primary shadow-md'
+            : 'text-on-surface-secondary hover:text-on-surface hover:bg-surface'
             }`}
         >
           <Coffee size={18} className="sm:w-5 sm:h-5" />

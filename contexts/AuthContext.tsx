@@ -42,13 +42,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (user) {
                 // Fetch profile
-                const { data: profileData } = await supabase
+                const { data: profileData, error } = await supabase
                     .from('profiles')
                     .select('id, username, role')
                     .eq('id', user.id)
                     .single()
 
-                setProfile(profileData)
+                if (error) {
+                    console.error('Error fetching profile:', error)
+                } else {
+                    console.log('AuthContext: Profile loaded', profileData)
+                    setProfile(profileData)
+                }
             }
 
             setLoading(false)
@@ -96,13 +101,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 },
                 async (payload) => {
                     // Refetch profile when it changes
-                    const { data: profileData } = await supabase
+                    const { data: profileData, error } = await supabase
                         .from('profiles')
                         .select('id, username, role')
                         .eq('id', user.id)
                         .single()
 
-                    setProfile(profileData)
+                    if (error) {
+                        console.error('Error fetching profile (realtime):', error)
+                    } else {
+                        console.log('AuthContext: Profile updated (realtime)', profileData)
+                        setProfile(profileData)
+                    }
                 }
             )
             .subscribe()
