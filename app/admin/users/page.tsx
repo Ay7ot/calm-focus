@@ -248,8 +248,8 @@ export default function UsersPage() {
                       <td className="px-4 py-4 whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${u.role === 'admin'
-                              ? 'bg-primary/10 text-primary'
-                              : 'bg-neutral-medium/10 text-neutral-medium'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-neutral-medium/10 text-neutral-medium'
                             }`}
                         >
                           {u.role === 'admin' ? <ShieldCheck size={14} /> : <Shield size={14} />}

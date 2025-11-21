@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Brain, MessageSquare, Bell, LogOut, LayoutDashboard, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
-import { useEffect, useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface SidebarProps {
   onNavigate?: () => void
@@ -13,23 +13,7 @@ interface SidebarProps {
 export default function Sidebar({ onNavigate }: SidebarProps = {}) {
   const pathname = usePathname()
   const router = useRouter()
-  const [isAdmin, setIsAdmin] = useState(false)
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        setIsAdmin(profile?.role === 'admin')
-      }
-    }
-    checkAdmin()
-  }, [])
+  const { isAdmin } = useAuth()
 
   const isActive = (path: string) => {
     if (path === '/') return pathname === '/'

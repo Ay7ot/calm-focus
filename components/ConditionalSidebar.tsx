@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { MobileSidebarProvider } from './MobileSidebar'
+import Sidebar from './Sidebar'
 
 export default function ConditionalSidebar() {
   const pathname = usePathname()
@@ -14,6 +14,11 @@ export default function ConditionalSidebar() {
     return null
   }
 
-  return <MobileSidebarProvider>{null}</MobileSidebarProvider>
+  // Desktop sidebar (mobile is handled by MobileSidebarProvider)
+  return (
+    <div className="hidden lg:block">
+      <Sidebar />
+    </div>
+  )
 }
 

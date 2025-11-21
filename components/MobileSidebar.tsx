@@ -11,7 +11,7 @@ interface MobileSidebarContextType {
 
 const MobileSidebarContext = createContext<MobileSidebarContextType>({
   isOpen: false,
-  setIsOpen: () => {},
+  setIsOpen: () => { },
 })
 
 export function useMobileSidebar() {
@@ -20,40 +20,55 @@ export function useMobileSidebar() {
 
 export function MobileSidebarProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
+
+  const handleClose = () => {
+    setIsClosing(true)
+    // Wait for animation to complete before actually closing
+    setTimeout(() => {
+      setIsOpen(false)
+      setIsClosing(false)
+    }, 300)
+  }
 
   return (
     <MobileSidebarContext.Provider value={{ isOpen, setIsOpen }}>
       {children}
-      
+
       {/* Mobile Sidebar Overlay */}
-      {isOpen && (
+      {(isOpen || isClosing) && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop with fade animation */}
           <div
             className="lg:hidden fixed inset-0 bg-black/50 z-40"
-            onClick={() => setIsOpen(false)}
+            onClick={handleClose}
+            style={{
+              animation: isClosing ? 'fadeOut 200ms ease-out' : 'fadeIn 200ms ease-out'
+            }}
           />
 
-          {/* Sidebar */}
-          <div className="lg:hidden fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300">
+          {/* Sidebar with slide animation */}
+          <div
+            className="lg:hidden fixed inset-y-0 left-0 z-50 w-64"
+            style={{
+              animation: isClosing
+                ? 'slideOutToLeft 300ms ease-out'
+                : 'slideInFromLeft 300ms ease-out'
+            }}
+          >
             {/* Close button */}
             <button
-              onClick={() => setIsOpen(false)}
-              className="absolute top-4 right-4 z-10 w-8 h-8 rounded-lg bg-surface flex items-center justify-center text-on-surface cursor-pointer"
+              onClick={handleClose}
+              className="absolute top-4 right-4 z-10 w-8 h-8 rounded-lg bg-surface hover:bg-backplate flex items-center justify-center text-on-surface cursor-pointer transition-colors"
               aria-label="Close menu"
             >
               <X size={18} />
             </button>
-            
-            <Sidebar onNavigate={() => setIsOpen(false)} />
+
+            <Sidebar onNavigate={handleClose} />
           </div>
         </>
       )}
-
-      {/* Desktop Sidebar - Always visible */}
-      <div className="hidden lg:block">
-        <Sidebar />
-      </div>
     </MobileSidebarContext.Provider>
   )
 }

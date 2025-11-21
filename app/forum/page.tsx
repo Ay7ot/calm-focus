@@ -88,6 +88,20 @@ export default async function ForumPage() {
     .eq('id', user.id)
     .single()
 
+  // Fetch community stats
+  const [
+    { count: totalMembers },
+    { count: totalDiscussions },
+    { count: activeToday }
+  ] = await Promise.all([
+    supabase.from('profiles').select('*', { count: 'exact', head: true }),
+    supabase.from('forum_posts').select('*', { count: 'exact', head: true }),
+    supabase
+      .from('focus_sessions')
+      .select('user_id', { count: 'exact', head: true })
+      .gte('started_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+  ])
+
   return (
     <div className="min-h-screen bg-background">
 
@@ -124,17 +138,17 @@ export default async function ForumPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-on-surface-secondary">Members</span>
-                  <span className="font-semibold text-on-surface">2,847</span>
+                  <span className="font-semibold text-on-surface">{totalMembers?.toLocaleString() || 0}</span>
                 </div>
                 <div className="h-px bg-border"></div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-on-surface-secondary">Discussions</span>
-                  <span className="font-semibold text-on-surface">3,429</span>
+                  <span className="font-semibold text-on-surface">{totalDiscussions?.toLocaleString() || 0}</span>
                 </div>
                 <div className="h-px bg-border"></div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-on-surface-secondary">Active Today</span>
-                  <span className="font-semibold text-primary">247</span>
+                  <span className="font-semibold text-primary">{activeToday?.toLocaleString() || 0}</span>
                 </div>
               </div>
             </div>
@@ -161,11 +175,11 @@ export default async function ForumPage() {
 
             {/* Search Bar */}
             <div className="relative">
-              <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-medium" />
+              <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-medium pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search discussions..."
-                className="input w-full pl-12"
+                className="w-full h-12 pl-12 pr-4 rounded-lg border border-border bg-surface-elevated text-on-surface placeholder:text-neutral-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
               />
             </div>
 
