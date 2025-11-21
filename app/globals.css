@@ -39,8 +39,8 @@
   --color-info-bg: #f5efe7;
 
   /* Typography */
-  --font-heading: "Inter", system-ui, sans-serif;
-  --font-body: "Roboto", system-ui, sans-serif;
+  --font-heading: "Montserrat", system-ui, sans-serif;
+  --font-body: "DM Sans", system-ui, sans-serif;
 
   /* Spacing (8px baseline) */
   --space-1: 8px;
