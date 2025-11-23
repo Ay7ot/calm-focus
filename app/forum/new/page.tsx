@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import { createPost } from '../actions'
 import Link from 'next/link'
-import { ArrowLeft, Send } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import UserMenu from '@/components/UserMenu'
 import { MobileMenuButton } from '@/components/MobileSidebar'
+import NewPostForm from './NewPostForm'
 
 export default async function NewPostPage() {
     const supabase = await createClient()
@@ -26,7 +26,7 @@ export default async function NewPostPage() {
 
             {/* Header */}
             <header className="h-16 border-b border-border bg-surface-elevated sticky top-0 z-20">
-                <div className="h-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2">
+                <div className="h-full mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2">
                     <MobileMenuButton />
                     <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                         <Link href="/forum" className="inline-flex items-center gap-1 sm:gap-2 text-on-surface-secondary hover:text-on-surface transition-colors text-sm shrink-0">
@@ -42,70 +42,8 @@ export default async function NewPostPage() {
                 </div>
             </header>
 
-            <div className="max-w-4xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
-                <div className="card">
-
-                    <form action={createPost} className="space-y-6">
-
-                        <div>
-                            <label htmlFor="category" className="block text-sm font-semibold text-on-surface mb-2">
-                                Category
-                            </label>
-                            <select
-                                name="category"
-                                id="category"
-                                className="input w-full cursor-pointer"
-                            >
-                                <option value="general">General Chat</option>
-                                <option value="strategies">Strategies & Tips</option>
-                                <option value="wins">Small Wins</option>
-                                <option value="venting">Venting (Safe Space)</option>
-                            </select>
-                            <p className="text-xs text-on-surface-secondary mt-2">Choose the most relevant category for your discussion</p>
-                        </div>
-
-                        <div>
-                            <label htmlFor="title" className="block text-sm font-semibold text-on-surface mb-2">
-                                Title
-                            </label>
-                            <input
-                                type="text"
-                                name="title"
-                                id="title"
-                                required
-                                placeholder="What's on your mind?"
-                                className="input w-full"
-                            />
-                        </div>
-
-                        <div>
-                            <label htmlFor="content" className="block text-sm font-semibold text-on-surface mb-2">
-                                Content
-                            </label>
-                            <textarea
-                                name="content"
-                                id="content"
-                                required
-                                rows={12}
-                                placeholder="Share your thoughts, experiences, or questions..."
-                                className="input w-full min-h-[240px] py-3 resize-none"
-                            />
-                            <p className="text-xs text-on-surface-secondary mt-2">Be respectful and supportive. This is a safe space.</p>
-                        </div>
-
-                        <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-border">
-                            <Link href="/forum" className="btn btn-secondary">
-                                Cancel
-                            </Link>
-                            <button type="submit" className="btn btn-primary">
-                                <Send size={18} />
-                                Post Discussion
-                            </button>
-                        </div>
-
-                    </form>
-
-                </div>
+            <div className="mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
+                <NewPostForm />
 
                 {/* Guidelines Card */}
                 <div className="card bg-backplate mt-6">

@@ -1,20 +1,37 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import Link from 'next/link'
-import { MessageSquare, Plus, Search, Users } from 'lucide-react'
+import { MessageSquare, Plus, Users } from 'lucide-react'
 import UserMenu from '@/components/UserMenu'
 import EmptyState from '@/components/EmptyState'
 import SkeletonLoader from '@/components/SkeletonLoader'
 import { MobileMenuButton } from '@/components/MobileSidebar'
+import SearchBar from '@/components/SearchBar'
+import LikeButton from '@/components/LikeButton'
 import { Suspense } from 'react'
 
-async function ForumPosts() {
+async function ForumPosts({ category, search }: { category?: string; search?: string }) {
   const supabase = await createClient()
-  const { data: posts, error } = await supabase
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Fetch posts with optional category and search filters
+  let query = supabase
     .from('forum_posts')
     .select('*, profiles(username, avatar_url)')
     .order('created_at', { ascending: false })
     .limit(20)
+
+  // Apply category filter if provided
+  if (category && category !== 'all') {
+    query = query.eq('category', category)
+  }
+
+  // Apply search filter if provided
+  if (search && search.trim()) {
+    query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%`)
+  }
+
+  const { data: posts, error } = await query
 
   if (error || !posts || posts.length === 0) {
     return (
@@ -31,6 +48,40 @@ async function ForumPosts() {
       />
     )
   }
+
+  const postIds = posts.map(p => p.id)
+
+  // Fetch comment counts for all posts
+  const { data: commentCounts } = await supabase
+    .from('forum_comments')
+    .select('post_id')
+    .in('post_id', postIds)
+
+  // Create a map of post_id to comment count
+  const countsMap = commentCounts?.reduce((acc: Record<number, number>, curr) => {
+    acc[curr.post_id] = (acc[curr.post_id] || 0) + 1
+    return acc
+  }, {}) || {}
+
+  // Fetch like counts for all posts
+  const { data: likeCounts } = await supabase
+    .from('post_reactions')
+    .select('post_id')
+    .in('post_id', postIds)
+
+  const likesMap = likeCounts?.reduce((acc: Record<number, number>, curr) => {
+    acc[curr.post_id] = (acc[curr.post_id] || 0) + 1
+    return acc
+  }, {}) || {}
+
+  // Fetch user's likes
+  const { data: userLikes } = user ? await supabase
+    .from('post_reactions')
+    .select('post_id')
+    .eq('user_id', user.id)
+    .in('post_id', postIds) : { data: null }
+
+  const userLikesSet = new Set(userLikes?.map(l => l.post_id) || [])
 
   return (
     <div className="space-y-3">
@@ -59,13 +110,26 @@ async function ForumPosts() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 pt-3 border-t border-border">
-            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
-              {post.profiles?.username?.charAt(0).toUpperCase() || 'A'}
+          <div className="flex items-center justify-between pt-3 border-t border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-semibold text-primary">
+                {post.profiles?.username?.charAt(0).toUpperCase() || 'A'}
+              </div>
+              <span className="text-sm font-medium text-on-surface-secondary">
+                {post.profiles?.username || 'Anonymous'}
+              </span>
             </div>
-            <span className="text-sm font-medium text-on-surface-secondary">
-              {post.profiles?.username || 'Anonymous'}
-            </span>
+            <div className="flex items-center gap-2">
+              <LikeButton
+                postId={post.id}
+                initialLikeCount={likesMap[post.id] || 0}
+                initialIsLiked={userLikesSet.has(post.id)}
+              />
+              <div className="flex items-center gap-1 text-on-surface-secondary px-3 py-1.5">
+                <MessageSquare size={16} />
+                <span className="text-sm font-medium">{countsMap[post.id] || 0}</span>
+              </div>
+            </div>
           </div>
         </Link>
       ))}
@@ -73,7 +137,12 @@ async function ForumPosts() {
   )
 }
 
-export default async function ForumPage() {
+export default async function ForumPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string; search?: string }>
+}) {
+  const { category, search } = await searchParams
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -89,18 +158,29 @@ export default async function ForumPage() {
     .single()
 
   // Fetch community stats
+  const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
+
   const [
     { count: totalMembers },
     { count: totalDiscussions },
-    { count: activeToday }
+    { data: postsToday },
+    { data: commentsToday },
+    { data: reactionsToday }
   ] = await Promise.all([
     supabase.from('profiles').select('*', { count: 'exact', head: true }),
     supabase.from('forum_posts').select('*', { count: 'exact', head: true }),
-    supabase
-      .from('focus_sessions')
-      .select('user_id', { count: 'exact', head: true })
-      .gte('started_at', new Date(new Date().setHours(0, 0, 0, 0)).toISOString())
+    supabase.from('forum_posts').select('user_id').gte('created_at', startOfToday),
+    supabase.from('forum_comments').select('user_id').gte('created_at', startOfToday),
+    supabase.from('post_reactions').select('user_id').gte('created_at', startOfToday)
   ])
+
+  // Count unique users who were active today (posted, commented, or reacted)
+  const activeUserIds = new Set([
+    ...(postsToday?.map(p => p.user_id) || []),
+    ...(commentsToday?.map(c => c.user_id) || []),
+    ...(reactionsToday?.map(r => r.user_id) || [])
+  ])
+  const activeToday = activeUserIds.size
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,8 +206,8 @@ export default async function ForumPage() {
       <div className=" mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 lg:gap-8">
 
-          {/* Sidebar */}
-          <aside className="space-y-6">
+          {/* Sidebar - Hidden on mobile, visible on desktop */}
+          <aside className="space-y-6 hidden xl:block">
 
             {/* Stats Card */}
             <div className="card">
@@ -153,17 +233,30 @@ export default async function ForumPage() {
               </div>
             </div>
 
-            {/* Categories */}
+            {/* Categories - Desktop vertical list */}
             <div className="card">
               <h3 className="font-semibold text-on-surface mb-4">Categories</h3>
               <div className="space-y-2">
+                <Link
+                  href="/forum"
+                  className={`w-full block text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${!category || category === 'all'
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-on-surface-secondary hover:bg-backplate hover:text-on-surface'
+                    }`}
+                >
+                  All Discussions
+                </Link>
                 {['general', 'strategies', 'wins', 'venting'].map((cat) => (
-                  <button
+                  <Link
                     key={cat}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-on-surface-secondary hover:bg-backplate hover:text-on-surface transition-colors capitalize"
+                    href={`/forum?category=${cat}`}
+                    className={`w-full block text-left px-3 py-2 rounded-lg text-sm transition-colors capitalize cursor-pointer ${category === cat
+                      ? 'bg-primary/10 text-primary font-medium'
+                      : 'text-on-surface-secondary hover:bg-backplate hover:text-on-surface'
+                      }`}
                   >
                     {cat === 'general' ? 'General Chat' : cat === 'strategies' ? 'Strategies & Tips' : cat === 'wins' ? 'Small Wins' : 'Safe Space'}
-                  </button>
+                  </Link>
                 ))}
               </div>
             </div>
@@ -173,19 +266,90 @@ export default async function ForumPage() {
           {/* Main Content */}
           <div className="xl:col-span-3 space-y-6">
 
-            {/* Search Bar */}
-            <div className="relative">
-              <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-medium pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search discussions..."
-                className="w-full h-12 pl-12 pr-4 rounded-lg border border-border bg-surface-elevated text-on-surface placeholder:text-neutral-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-              />
+            {/* Mobile Categories - Horizontal scrollable */}
+            <div className="xl:hidden overflow-x-auto -mx-4 px-4">
+              <div className="flex gap-2 pb-2 min-w-max">
+                <Link
+                  href="/forum"
+                  className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${!category || category === 'all'
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface-elevated border border-border text-on-surface-secondary hover:border-primary'
+                    }`}
+                >
+                  All
+                </Link>
+                {['general', 'strategies', 'wins', 'venting'].map((cat) => (
+                  <Link
+                    key={cat}
+                    href={`/forum?category=${cat}`}
+                    className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-colors capitalize cursor-pointer whitespace-nowrap ${category === cat
+                      ? 'bg-primary text-on-primary'
+                      : 'bg-surface-elevated border border-border text-on-surface-secondary hover:border-primary'
+                      }`}
+                  >
+                    {cat === 'general' ? '💬 General' : cat === 'strategies' ? '💡 Strategies' : cat === 'wins' ? '🎉 Wins' : '💭 Safe Space'}
+                  </Link>
+                ))}
+              </div>
             </div>
+
+            {/* Create Post CTA - Compact on mobile, full on desktop */}
+            <Link
+              href="/forum/new"
+              className="block card bg-linear-to-br from-primary/5 via-surface-elevated to-accent/5 border-2 border-dashed border-primary/30 hover:border-primary/50 hover:shadow-md transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/30 transition-colors">
+                  <Plus size={20} className="text-primary sm:w-6 sm:h-6" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm sm:text-base font-semibold text-on-surface mb-0 sm:mb-1 group-hover:text-primary transition-colors">
+                    Start a New Discussion
+                  </h3>
+                  <p className="text-xs sm:text-sm text-on-surface-secondary hidden sm:block">
+                    Share your thoughts, ask questions, or celebrate your wins with the community
+                  </p>
+                </div>
+              </div>
+            </Link>
+
+            {/* Search Bar */}
+            <SearchBar />
+
+            {/* Active Filters */}
+            {(category || search) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-on-surface-secondary">Active filters:</span>
+                {category && (
+                  <Link
+                    href={search ? `/forum?search=${search}` : '/forum'}
+                    className="badge badge-neutral text-xs capitalize flex items-center gap-1 cursor-pointer hover:bg-error/10 hover:text-error transition-colors"
+                  >
+                    {category}
+                    <span>×</span>
+                  </Link>
+                )}
+                {search && (
+                  <Link
+                    href={category ? `/forum?category=${category}` : '/forum'}
+                    className="badge badge-neutral text-xs flex items-center gap-1 cursor-pointer hover:bg-error/10 hover:text-error transition-colors"
+                  >
+                    "{search}"
+                    <span>x</span>
+                  </Link>
+                )}
+                <Link
+                  href="/forum"
+                  className="text-xs text-primary hover:underline cursor-pointer"
+                >
+                  Clear all
+                </Link>
+              </div>
+            )}
 
             {/* Posts List */}
             <Suspense fallback={<SkeletonLoader type="list" />}>
-              <ForumPosts />
+              <ForumPosts category={category} search={search} />
             </Suspense>
 
           </div>

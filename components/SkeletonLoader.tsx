@@ -14,7 +14,7 @@ export default function SkeletonLoader({ type = 'card' }: { type?: 'card' | 'lis
     return (
       <div className="space-y-3">
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="flex items-center gap-3 p-4 bg-white border border-border rounded-lg">
+          <div key={i} className="flex items-center gap-3 p-4 bg-border border border-border rounded-lg">
             <div className="skeleton h-10 w-10 rounded-full"></div>
             <div className="flex-1 space-y-2">
               <div className="skeleton h-4 w-3/4"></div>
@@ -47,7 +47,7 @@ export default function SkeletonLoader({ type = 'card' }: { type?: 'card' | 'lis
           </div>
         </div>
         {[...Array(5)].map((_, i) => (
-          <div key={i} className="table-row flex items-center gap-4">
+          <div key={i} className="table-row items-center gap-4">
             <div className="skeleton h-4 w-40"></div>
             <div className="skeleton h-4 w-32"></div>
             <div className="skeleton h-4 w-24"></div>

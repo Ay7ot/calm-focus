@@ -5,6 +5,8 @@ import { Brain, MessageSquare, Bell, TrendingUp, Clock, Award } from 'lucide-rea
 import StatCard from '@/components/StatCard'
 import UserMenu from '@/components/UserMenu'
 import { MobileMenuButton } from '@/components/MobileSidebar'
+import { getNextMilestone, getUserAchievements } from '@/utils/milestones'
+import ReminderNotifications from '@/components/ReminderNotifications'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -14,10 +16,10 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  // Get user profile for username
+  // Get user profile with preferences
   const { data: profile } = await supabase
     .from('profiles')
-    .select('username')
+    .select('username, daily_goal')
     .eq('id', user.id)
     .single()
 
@@ -27,12 +29,12 @@ export default async function DashboardPage() {
 
   const { data: todaySessions, count: todaySessionCount } = await supabase
     .from('focus_sessions')
-    .select('duration_seconds', { count: 'exact' })
+    .select('duration_minutes', { count: 'exact' })
     .eq('user_id', user.id)
     .gte('completed_at', startOfToday.toISOString())
 
   // Calculate today's total time in minutes
-  const todayTotalMinutes = Math.round(todaySessions?.reduce((sum, session) => sum + (session.duration_seconds / 60), 0) || 0)
+  const todayTotalMinutes = Math.round(todaySessions?.reduce((sum, session) => sum + session.duration_minutes, 0) || 0)
 
   // Get this week's sessions
   const startOfWeek = new Date()
@@ -41,12 +43,13 @@ export default async function DashboardPage() {
 
   const { data: weekSessions } = await supabase
     .from('focus_sessions')
-    .select('duration_seconds')
+    .select('duration_minutes')
     .eq('user_id', user.id)
     .gte('completed_at', startOfWeek.toISOString())
 
-  const weekTotalHours = Math.floor((weekSessions?.reduce((sum, session) => sum + (session.duration_seconds / 60), 0) || 0) / 60)
-  const weekTotalMinutes = Math.round((weekSessions?.reduce((sum, session) => sum + (session.duration_seconds / 60), 0) || 0) % 60)
+  const weekTotalMinutes = weekSessions?.reduce((sum, session) => sum + session.duration_minutes, 0) || 0
+  const weekTotalHours = Math.floor(weekTotalMinutes / 60)
+  const weekRemainingMinutes = Math.round(weekTotalMinutes % 60)
 
   // Get user's forum posts count
   const { count: userPostsCount } = await supabase
@@ -108,18 +111,28 @@ export default async function DashboardPage() {
   // Get recent sessions for "Today's Focus Goals"
   const { data: recentSessions } = await supabase
     .from('focus_sessions')
-    .select('completed_at, duration_seconds')
+    .select('completed_at, duration_minutes')
     .eq('user_id', user.id)
     .gte('completed_at', startOfToday.toISOString())
     .order('completed_at', { ascending: false })
     .limit(5)
 
-  // Calculate milestone progress (every 5 sessions)
-  const totalSessions = allSessions?.length || 0
-  const currentMilestone = Math.floor(totalSessions / 5) * 5
-  const nextMilestone = currentMilestone + 5
-  const progressToNextMilestone = totalSessions - currentMilestone
-  const progressPercentage = (progressToNextMilestone / 5) * 100
+  // Get real milestone progress
+  const milestoneProgress = await getNextMilestone(user.id)
+
+  // Get recent achievements (last 3)
+  const recentAchievements = await getUserAchievements(user.id)
+
+  // Get random daily tip
+  const { data: allTips } = await supabase
+    .from('daily_tips')
+    .select('title, content, category')
+    .eq('is_active', true)
+
+  // Select a random tip (or use date-based selection for consistency)
+  const randomTip = allTips && allTips.length > 0
+    ? allTips[Math.floor(Math.random() * allTips.length)]
+    : null
 
   return (
     <div className="min-h-screen bg-background">
@@ -140,17 +153,22 @@ export default async function DashboardPage() {
 
       <div className=" mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
 
+        {/* Reminder Notifications */}
+        <div className="mb-6">
+          <ReminderNotifications userId={user.id} />
+        </div>
+
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-8">
           <StatCard
             label="Focus Sessions Today"
-            value={`${todaySessionCount || 0}`}
+            value={`${todaySessionCount || 0} / ${profile?.daily_goal || 8}`}
             change={todaySessionCount ? `${todayTotalMinutes} minutes` : 'Start your first session!'}
-            changeType={todaySessionCount ? 'positive' : 'neutral'}
+            changeType={todaySessionCount && todaySessionCount >= (profile?.daily_goal || 8) ? 'positive' : 'neutral'}
           />
           <StatCard
             label="Total Time This Week"
-            value={weekTotalHours > 0 ? `${weekTotalHours}h ${weekTotalMinutes}m` : `${weekTotalMinutes}m`}
+            value={weekTotalHours > 0 ? `${weekTotalHours}h ${weekRemainingMinutes}m` : `${weekTotalMinutes}m`}
             change={weekSessions && weekSessions.length > 0 ? `${weekSessions.length} sessions` : 'Time to focus'}
             changeType={weekSessions && weekSessions.length > 0 ? 'positive' : 'neutral'}
           />
@@ -226,7 +244,7 @@ export default async function DashboardPage() {
               <div className="space-y-4">
                 {recentSessions.map((session, index) => {
                   const completedTime = new Date(session.completed_at)
-                  const durationMinutes = Math.round(session.duration_seconds / 60)
+                  const durationMinutes = session.duration_minutes
 
                   return (
                     <div key={index} className="p-4 bg-backplate rounded-lg border border-border">
@@ -255,27 +273,80 @@ export default async function DashboardPage() {
 
           {/* Achievements */}
           <div className="space-y-6">
-            <div className="card bg-linear-to-br from-primary to-secondary border-primary">
-              <div className="flex items-center gap-2 mb-4">
-                <Award size={20} className="text-on-surface" />
-                <h3 className="font-semibold">Next Milestone</h3>
+            {milestoneProgress.milestone ? (
+              <div className="card bg-linear-to-br from-primary to-secondary border-primary">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-2xl">{milestoneProgress.milestone.badge_icon || '🏆'}</span>
+                  <h3 className="font-semibold">Next Milestone</h3>
+                </div>
+                <h4 className="text-base font-semibold text-neutral-medium mb-2">
+                  {milestoneProgress.milestone.title}
+                </h4>
+                <p className="text-sm text-neutral-medium font-medium mb-4">
+                  {milestoneProgress.milestone.description || 'Complete this milestone to unlock the achievement!'}
+                </p>
+                <div className="h-2 bg-neutral-medium/20 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-neutral-medium transition-all duration-500"
+                    style={{ width: `${milestoneProgress.progressPercentage}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-neutral-medium font-medium mt-2">
+                  {milestoneProgress.totalSessions} / {milestoneProgress.milestone.session_threshold} sessions
+                  {milestoneProgress.sessionsToGo > 0 && ` (${milestoneProgress.sessionsToGo} to go!)`}
+                </p>
               </div>
-              <p className="text-sm text-on-surface font-medium mb-4">
-                Complete {nextMilestone} focus sessions to unlock your {nextMilestone === 5 ? 'first' : 'next'} achievement!
-              </p>
-              <div className="h-2 bg-on-surface/20 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-on-surface transition-all duration-500"
-                  style={{ width: `${progressPercentage}%` }}
-                ></div>
+            ) : (
+              <div className="card bg-linear-to-br from-primary to-secondary border-primary">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-2xl">👑</span>
+                  <h3 className="font-semibold">All Milestones Complete!</h3>
+                </div>
+                <p className="text-sm text-neutral-medium font-medium">
+                  Amazing! You've unlocked all available achievements. Keep up the great work!
+                </p>
               </div>
-              <p className="text-xs text-on-surface font-medium mt-2">{progressToNextMilestone} / 5 sessions</p>
-            </div>
+            )}
+
+            {/* Recent Achievements */}
+            {recentAchievements.length > 0 && (
+              <div className="card">
+                <h3 className="font-semibold text-on-surface mb-4">Recent Achievements</h3>
+                <div className="space-y-3">
+                  {recentAchievements.slice(0, 3).map((achievement: any) => (
+                    <div key={achievement.id} className="flex items-center gap-3 p-2 rounded-lg bg-backplate">
+                      <span className="text-2xl">{achievement.milestones?.badge_icon || '🏆'}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-on-surface truncate">
+                          {achievement.milestones?.title}
+                        </p>
+                        <p className="text-xs text-on-surface-secondary">
+                          {new Date(achievement.unlocked_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="card">
-              <h3 className="font-semibold text-on-surface mb-4">Quick Tip</h3>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">💡</span>
+                <h3 className="font-semibold text-on-surface">
+                  {randomTip?.title || 'Quick Tip'}
+                </h3>
+                {randomTip?.category && (
+                  <span className="badge badge-neutral text-xs capitalize ml-auto">
+                    {randomTip.category}
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-on-surface leading-relaxed">
-                💡 Start your day with a 5-minute focus session to build momentum. Small wins lead to big progress!
+                {randomTip?.content || '💡 Start your day with a 5-minute focus session to build momentum. Small wins lead to big progress!'}
               </p>
             </div>
           </div>

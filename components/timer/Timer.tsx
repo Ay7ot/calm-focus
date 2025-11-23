@@ -1,8 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useTimerStore } from '@/stores/timerStore'
+import { saveFocusSession } from '@/app/focus/actions'
 import { Play, Pause, RotateCcw, Coffee, Brain } from 'lucide-react'
+import Toast from '@/components/Toast'
+import AchievementModal from '@/components/AchievementModal'
 
 export default function Timer() {
   const {
@@ -14,7 +17,38 @@ export default function Timer() {
     resetTimer,
     tick,
     setMode,
+    setOnComplete,
   } = useTimerStore()
+
+  const [isPending, startTransition] = useTransition()
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [achievementModal, setAchievementModal] = useState<any | null>(null)
+
+  // Set up completion handler
+  useEffect(() => {
+    setOnComplete(async (durationSeconds, sessionMode) => {
+      startTransition(async () => {
+        const result = await saveFocusSession(durationSeconds, sessionMode)
+
+        if (result.error) {
+          setToast({ message: 'Failed to save session', type: 'error' })
+        } else if (result.newMilestones && result.newMilestones.length > 0) {
+          // Show achievement modal for first unlocked milestone
+          const milestone = result.newMilestones[0]
+          setAchievementModal(milestone)
+          // Also show a toast
+          setToast({
+            message: `🎉 ${milestone.title} unlocked!`,
+            type: 'success'
+          })
+        } else if (sessionMode === 'focus') {
+          setToast({ message: '✓ Focus session completed!', type: 'success' })
+        } else {
+          setToast({ message: '✓ Break completed!', type: 'success' })
+        }
+      })
+    })
+  }, [setOnComplete])
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
@@ -138,6 +172,21 @@ export default function Timer() {
           {Math.floor(duration / 60)} minutes
         </p>
       </div>
+
+      {/* Toast Notification */}
+      <Toast
+        isOpen={toast !== null}
+        message={toast?.message || ''}
+        variant={toast?.type || 'success'}
+        onClose={() => setToast(null)}
+      />
+
+      {/* Achievement Modal */}
+      <AchievementModal
+        isOpen={achievementModal !== null}
+        milestone={achievementModal}
+        onClose={() => setAchievementModal(null)}
+      />
 
     </div>
   )

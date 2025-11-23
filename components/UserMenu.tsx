@@ -1,9 +1,10 @@
 'use client'
 
 import UserAvatar from './UserAvatar'
-import { LogOut, ChevronDown } from 'lucide-react'
+import { LogOut, ChevronDown, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
+import Link from 'next/link'
 
 interface UserMenuProps {
   email?: string
@@ -51,6 +52,14 @@ export default function UserMenu({ email, username }: UserMenuProps) {
               {email && <p className="text-xs text-on-surface-secondary">{email}</p>}
             </div>
             <div className="p-2">
+              <Link
+                href="/settings"
+                onClick={() => setIsOpen(false)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-on-surface-secondary hover:bg-backplate hover:text-on-surface rounded-lg transition-colors cursor-pointer"
+              >
+                <Settings size={16} />
+                Settings
+              </Link>
               <button
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-on-surface-secondary hover:bg-backplate hover:text-on-surface rounded-lg transition-colors cursor-pointer"

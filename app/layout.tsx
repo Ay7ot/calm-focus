@@ -33,7 +33,7 @@ export default function RootLayout({
         <MobileSidebarProvider>
           <ConditionalSidebar />
           <ConditionalLayout>
-            {children}
+        {children}
           </ConditionalLayout>
         </MobileSidebarProvider>
       </body>

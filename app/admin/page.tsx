@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import Link from 'next/link'
-import { Users, Award, Bell, MessageSquare, TrendingUp, Settings, FileText, ShieldCheck } from 'lucide-react'
+import { Users, Award, Bell, MessageSquare, TrendingUp, Settings, FileText, ShieldCheck, UserPlus, Ban, Activity } from 'lucide-react'
 import StatCard from '@/components/StatCard'
 import UserMenu from '@/components/UserMenu'
 import { MobileMenuButton } from '@/components/MobileSidebar'
+import ActivityLog from './ActivityLog'
 
 export default async function AdminDashboard() {
   const supabase = await createClient()
@@ -42,18 +43,17 @@ export default async function AdminDashboard() {
     .select('*', { count: 'exact', head: true })
     .eq('is_active', true)
 
-  // Get global reminders count
-  const { count: globalReminders } = await supabase
-    .from('reminders')
+  // Get tips count
+  const { count: totalTips } = await supabase
+    .from('daily_tips')
     .select('*', { count: 'exact', head: true })
-    .eq('is_global', true)
 
-  // Get recent admin activity
+  // Get recent admin activity (fetch 50 for the activity log)
   const { data: recentAudit } = await supabase
     .from('admin_audit_log')
     .select('*, profiles(username)')
     .order('created_at', { ascending: false })
-    .limit(10)
+    .limit(50)
 
   // Get today's new users
   const startOfToday = new Date()
@@ -63,6 +63,30 @@ export default async function AdminDashboard() {
     .from('profiles')
     .select('*', { count: 'exact', head: true })
     .gte('created_at', startOfToday.toISOString())
+
+  // Get banned users count
+  const { count: bannedUsers } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('is_banned', true)
+
+  // Get admin users count
+  const { count: adminUsers } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('role', 'admin')
+
+  // Get today's posts count
+  const { count: postsToday } = await supabase
+    .from('forum_posts')
+    .select('*', { count: 'exact', head: true })
+    .gte('created_at', startOfToday.toISOString())
+
+  // Get today's sessions count
+  const { count: sessionsToday } = await supabase
+    .from('focus_sessions')
+    .select('*', { count: 'exact', head: true })
+    .gte('started_at', startOfToday.toISOString())
 
   return (
     <div className="min-h-screen bg-background">
@@ -82,32 +106,49 @@ export default async function AdminDashboard() {
       </header>
 
       <div className=" mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-8">
-          <StatCard
-            label="Total Users"
-            value={`${totalUsers || 0}`}
-            change={newUsersToday ? `+${newUsersToday} today` : 'No new users today'}
-            changeType={newUsersToday ? 'positive' : 'neutral'}
-          />
-          <StatCard
-            label="Total Sessions"
-            value={`${totalSessions || 0}`}
-            change="All-time completions"
-            changeType="neutral"
-          />
-          <StatCard
-            label="Forum Posts"
-            value={`${totalPosts || 0}`}
-            change="Community discussions"
-            changeType="neutral"
-          />
-          <StatCard
-            label="Active Milestones"
-            value={`${activeMilestones || 0}`}
-            change={`${globalReminders || 0} global reminders`}
-            changeType="neutral"
-          />
+        {/* Simplified Stats - Single Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="card">
+            <p className="text-xs text-on-surface-secondary mb-1">Users</p>
+            <p className="text-2xl font-bold text-on-surface mb-1">{totalUsers || 0}</p>
+            <div className="flex items-center gap-1 text-xs">
+              {bannedUsers ? (
+                <span className="text-error">{bannedUsers} banned</span>
+              ) : (
+                <span className="text-success">All active</span>
+              )}
+              {adminUsers && adminUsers > 1 && (
+                <>
+                  <span className="text-on-surface-secondary">•</span>
+                  <span className="text-primary">{adminUsers} admins</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <p className="text-xs text-on-surface-secondary mb-1">Sessions</p>
+            <p className="text-2xl font-bold text-on-surface mb-1">{totalSessions || 0}</p>
+            <p className="text-xs text-on-surface-secondary">
+              {sessionsToday ? `${sessionsToday} today` : 'None today'}
+            </p>
+          </div>
+
+          <div className="card">
+            <p className="text-xs text-on-surface-secondary mb-1">Posts</p>
+            <p className="text-2xl font-bold text-on-surface mb-1">{totalPosts || 0}</p>
+            <p className="text-xs text-on-surface-secondary">
+              {postsToday ? `+${postsToday} today` : 'None today'}
+            </p>
+          </div>
+
+          <div className="card">
+            <p className="text-xs text-on-surface-secondary mb-1">Content</p>
+            <p className="text-2xl font-bold text-on-surface mb-1">{(totalPosts || 0) + (totalTips || 0)}</p>
+            <p className="text-xs text-on-surface-secondary">
+              {totalPosts || 0} posts, {totalTips || 0} tips
+            </p>
+          </div>
         </div>
 
         {/* Quick Actions */}
@@ -164,68 +205,43 @@ export default async function AdminDashboard() {
           </div>
         </div>
 
-        {/* Recent Activity */}
+        {/* Recent Activity - Now using the ActivityLog component */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
-          <div className="xl:col-span-2 card">
-            <h2 className="text-xl font-semibold text-on-surface mb-6">Recent Admin Activity</h2>
-            {recentAudit && recentAudit.length > 0 ? (
-              <div className="space-y-3">
-                {recentAudit.map((log) => (
-                  <div key={log.id} className="p-4 bg-backplate rounded-lg border border-border">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-on-surface text-sm">{log.action}</span>
-                      <span className="text-xs text-on-surface-secondary">
-                        {new Date(log.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-xs text-on-surface-secondary">
-                      By: {log.profiles?.username || 'Admin'}
-                      {log.target_table && ` • ${log.target_table}`}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <TrendingUp size={48} className="mx-auto text-neutral-medium mb-4 opacity-50" />
-                <p className="text-on-surface-secondary">No recent admin activity</p>
-              </div>
-            )}
+          <div className="xl:col-span-2">
+            <ActivityLog initialLogs={recentAudit || []} />
           </div>
 
           <div className="space-y-6">
-            <div className="card bg-linear-to-br from-primary to-secondary border-primary">
-              <div className="flex items-center gap-2 mb-4">
-                <ShieldCheck size={20} className="text-on-surface" />
-                <h3 className="font-semibold">Admin Tools</h3>
+            <div className="card bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/30">
+              <div className="flex items-center gap-2 mb-3">
+                <ShieldCheck size={20} className="text-primary" />
+                <h3 className="font-semibold text-on-surface">Today's Activity</h3>
               </div>
-              <p className="text-sm text-on-surface font-medium mb-4">
-                Manage your Calm Focus platform with powerful admin tools.
-              </p>
-              <Link href="/dashboard" className="text-xs text-on-surface font-medium hover:underline">
-                ← Back to User Dashboard
-              </Link>
-            </div>
-
-            <div className="card">
-              <h3 className="font-semibold text-on-surface mb-4">Quick Stats</h3>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-on-surface-secondary">Total Users</span>
-                  <span className="text-sm font-semibold text-on-surface">{totalUsers || 0}</span>
+                  <span className="text-sm text-on-surface-secondary">New Users</span>
+                  <span className="text-lg font-bold text-on-surface">{newUsersToday || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-on-surface-secondary">Total Posts</span>
-                  <span className="text-sm font-semibold text-on-surface">{totalPosts || 0}</span>
+                  <span className="text-sm text-on-surface-secondary">Sessions</span>
+                  <span className="text-lg font-bold text-on-surface">{sessionsToday || 0}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-on-surface-secondary">Active Milestones</span>
-                  <span className="text-sm font-semibold text-on-surface">{activeMilestones || 0}</span>
+                  <span className="text-sm text-on-surface-secondary">New Posts</span>
+                  <span className="text-lg font-bold text-on-surface">{postsToday || 0}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-on-surface-secondary">Global Reminders</span>
-                  <span className="text-sm font-semibold text-on-surface">{globalReminders || 0}</span>
-                </div>
+              </div>
+              <div className="mt-4 pt-4 border-t border-border flex flex-col gap-2">
+                <Link 
+                  href="/admin/stats" 
+                  className="btn btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  <TrendingUp size={16} />
+                  View Detailed Stats
+                </Link>
+                <Link href="/dashboard" className="text-sm text-center text-on-surface-secondary hover:text-primary transition-colors">
+                  ← Back to User Dashboard
+                </Link>
               </div>
             </div>
           </div>

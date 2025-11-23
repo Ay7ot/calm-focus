@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Plus, Calendar, Clock, Trash2, AlertCircle } from 'lucide-react'
+import { Bell, Plus, Calendar, Clock, Trash2, AlertCircle, Edit2 } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import UserMenu from '@/components/UserMenu'
 import { MobileMenuButton } from '@/components/MobileSidebar'
@@ -30,6 +30,7 @@ export default function AdminRemindersPage() {
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null)
   const [deletingReminder, setDeletingReminder] = useState<Reminder | null>(null)
   const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' | 'info' | 'warning' } | null>(null)
   const [showToast, setShowToast] = useState(false)
@@ -144,6 +145,40 @@ export default function AdminRemindersPage() {
     }
   }
 
+  const handleEditReminder = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!editingReminder) return
+    
+    setIsSubmitting(true)
+
+    const formData = new FormData(e.currentTarget)
+    const supabase = createClient()
+
+    const { error } = await supabase
+      .from('reminders')
+      .update({
+        title: formData.get('title') as string,
+        message: formData.get('message') as string || null,
+        category: formData.get('category') as string,
+        remind_at: formData.get('remind_at') as string,
+        recurrence_pattern: formData.get('recurrence_pattern') as string || null,
+      })
+      .eq('id', editingReminder.id)
+
+    setIsSubmitting(false)
+
+    if (error) {
+      console.error('Error updating reminder:', error)
+      setToast({ message: 'Failed to update reminder', variant: 'error' })
+      setShowToast(true)
+    } else {
+      setEditingReminder(null)
+      await fetchReminders() // Immediate refresh
+      setToast({ message: 'Reminder updated successfully', variant: 'success' })
+      setShowToast(true)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -240,12 +275,22 @@ export default function AdminRemindersPage() {
                             {reminder.category}
                           </span>
                         </div>
-                        <button
-                          onClick={() => setDeletingReminder(reminder)}
-                          className="text-error hover:bg-error/10 p-2 rounded-lg transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setEditingReminder(reminder)}
+                            className="text-primary hover:bg-primary/10 p-2 rounded-lg transition-colors"
+                            title="Edit reminder"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingReminder(reminder)}
+                            className="text-error hover:bg-error/10 p-2 rounded-lg transition-colors"
+                            title="Delete reminder"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
                       </div>
 
                       {reminder.message && (
@@ -424,6 +469,120 @@ export default function AdminRemindersPage() {
             <button
               type="button"
               onClick={() => setIsCreateOpen(false)}
+              className="btn btn-ghost"
+              disabled={isSubmitting}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Modal */}
+      <Modal 
+        isOpen={editingReminder !== null} 
+        onClose={() => setEditingReminder(null)} 
+        title="Edit Global Reminder"
+      >
+        <form onSubmit={handleEditReminder} className="space-y-4">
+          <div>
+            <label htmlFor="edit-title" className="block text-sm font-semibold text-on-surface mb-2">
+              Title *
+            </label>
+            <input
+              type="text"
+              id="edit-title"
+              name="title"
+              required
+              defaultValue={editingReminder?.title}
+              className="w-full h-10 px-3 py-2 rounded-lg border border-border bg-backplate text-on-surface placeholder:text-neutral-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+              placeholder="e.g., Weekly Wellness Check"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="edit-message" className="block text-sm font-semibold text-on-surface mb-2">
+              Message
+            </label>
+            <textarea
+              id="edit-message"
+              name="message"
+              rows={3}
+              defaultValue={editingReminder?.message || ''}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-backplate text-on-surface placeholder:text-neutral-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all resize-y"
+              placeholder="Add a message for users"
+            ></textarea>
+          </div>
+
+          <div>
+            <label htmlFor="edit-category" className="block text-sm font-semibold text-on-surface mb-2">
+              Category
+            </label>
+            <select
+              id="edit-category"
+              name="category"
+              defaultValue={editingReminder?.category}
+              className="w-full h-10 px-3 py-2 rounded-lg border border-border bg-backplate text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all appearance-none"
+            >
+              <option value="wellness">Wellness</option>
+              <option value="focus">Focus</option>
+              <option value="social">Social</option>
+              <option value="achievement">Achievement</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="edit-remind_at" className="block text-sm font-semibold text-on-surface mb-2">
+              Remind At *
+            </label>
+            <input
+              type="datetime-local"
+              id="edit-remind_at"
+              name="remind_at"
+              required
+              defaultValue={editingReminder?.remind_at ? new Date(editingReminder.remind_at).toISOString().slice(0, 16) : ''}
+              className="w-full h-10 px-3 py-2 rounded-lg border border-border bg-backplate text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="edit-recurrence_pattern" className="block text-sm font-semibold text-on-surface mb-2">
+              Recurrence (Optional)
+            </label>
+            <select
+              id="edit-recurrence_pattern"
+              name="recurrence_pattern"
+              defaultValue={editingReminder?.recurrence_pattern || ''}
+              className="w-full h-10 px-3 py-2 rounded-lg border border-border bg-backplate text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all appearance-none"
+            >
+              <option value="">None</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-4 pt-4 border-t border-border">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="btn btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <Edit2 size={20} />
+                  Update Reminder
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditingReminder(null)}
               className="btn btn-ghost"
               disabled={isSubmitting}
             >

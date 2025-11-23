@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
-import Timer from '@/components/timer/Timer'
+import FocusPageClient from './FocusPageClient'
 import UserMenu from '@/components/UserMenu'
 import { MobileMenuButton } from '@/components/MobileSidebar'
 import StatCard from '@/components/StatCard'
 import { Calendar, TrendingUp, Award } from 'lucide-react'
+import { getNextMilestone } from '@/utils/milestones'
 
 export default async function FocusPage() {
   const supabase = await createClient()
@@ -14,12 +15,44 @@ export default async function FocusPage() {
     redirect('/login')
   }
 
-  // Get user profile for username
+  // Get user profile with preferences
   const { data: profile } = await supabase
     .from('profiles')
-    .select('username')
+    .select('username, daily_goal, default_focus_duration, default_break_duration')
     .eq('id', user.id)
     .single()
+
+  // Get today's sessions
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+
+  const { data: todaySessions, count: todayCount } = await supabase
+    .from('focus_sessions')
+    .select('duration_minutes', { count: 'exact' })
+    .eq('user_id', user.id)
+    .gte('completed_at', startOfToday.toISOString())
+
+  const todayTotalMinutes = Math.round(
+    todaySessions?.reduce((sum, s) => sum + s.duration_minutes, 0) || 0
+  )
+
+  // Get this week's sessions
+  const startOfWeek = new Date()
+  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+  startOfWeek.setHours(0, 0, 0, 0)
+
+  const { count: weekCount } = await supabase
+    .from('focus_sessions')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .gte('completed_at', startOfWeek.toISOString())
+
+  // Get next milestone
+  const milestoneProgress = await getNextMilestone(user.id)
+
+  // Daily goal from user preferences
+  const dailyGoalSessions = profile?.daily_goal || 8
+  const dailyGoalMinutes = dailyGoalSessions * (profile?.default_focus_duration || 25)
 
   return (
     <div className="min-h-screen bg-background">
@@ -42,7 +75,10 @@ export default async function FocusPage() {
           {/* Main Timer Section */}
           <div className="xl:col-span-2 space-y-6">
             <div className="card text-center">
-              <Timer />
+              <FocusPageClient
+                defaultFocusDuration={profile?.default_focus_duration || 25}
+                defaultBreakDuration={profile?.default_break_duration || 5}
+              />
             </div>
 
             {/* Quick Tips */}
@@ -81,19 +117,29 @@ export default async function FocusPage() {
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-on-surface-secondary">Focus Sessions</span>
-                    <span className="font-semibold text-on-surface">0 / 8</span>
+                    <span className="font-semibold text-on-surface">
+                      {todayCount || 0} / {dailyGoalSessions}
+                    </span>
                   </div>
                   <div className="h-2 bg-backplate rounded-full overflow-hidden">
-                    <div className="h-full bg-primary w-0 transition-all"></div>
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${Math.min(100, ((todayCount || 0) / dailyGoalSessions) * 100)}%` }}
+                    ></div>
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-on-surface-secondary">Total Time</span>
-                    <span className="font-semibold text-on-surface">0m / 200m</span>
+                    <span className="font-semibold text-on-surface">
+                      {todayTotalMinutes}m / {dailyGoalMinutes}m
+                    </span>
                   </div>
                   <div className="h-2 bg-backplate rounded-full overflow-hidden">
-                    <div className="h-full bg-secondary w-0 transition-all"></div>
+                    <div
+                      className="h-full bg-secondary transition-all"
+                      style={{ width: `${Math.min(100, (todayTotalMinutes / dailyGoalMinutes) * 100)}%` }}
+                    ></div>
                   </div>
                 </div>
               </div>
@@ -102,19 +148,32 @@ export default async function FocusPage() {
             {/* Weekly Stats */}
             <StatCard
               label="Sessions This Week"
-              value="0"
-              change="Start your first session!"
-              changeType="neutral"
+              value={`${weekCount || 0}`}
+              change={weekCount ? `Keep going!` : 'Start your first session!'}
+              changeType={weekCount ? 'positive' : 'neutral'}
             />
 
             {/* Achievements */}
-            <div className="card bg-linear-to-br from-primary to-secondary text-white border-primary">
-              <div className="flex items-center gap-2 mb-4">
-                <Award size={20} className="text-on-surface" />
-                <h3 className="font-semibold">Next Milestone</h3>
+            {milestoneProgress.milestone ? (
+              <div className="card bg-linear-to-br from-primary to-secondary border-primary">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-2xl">{milestoneProgress.milestone.badge_icon || '🏆'}</span>
+                  <h3 className="font-semibold">Next Milestone</h3>
+                </div>
+                <p className="text-sm font-semibold mb-1">{milestoneProgress.milestone.title}</p>
+                <p className="text-sm text-neutral-medium">
+                  {milestoneProgress.sessionsToGo} {milestoneProgress.sessionsToGo === 1 ? 'session' : 'sessions'} to go!
+                </p>
               </div>
-              <p className="text-sm text-on-surface opacity-90">Complete 5 sessions to unlock your first achievement!</p>
-            </div>
+            ) : (
+              <div className="card bg-linear-to-br from-primary to-secondary text-neutral-medium border-primary">
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="text-2xl">👑</span>
+                  <h3 className="font-semibold">All Complete!</h3>
+                </div>
+                <p className="text-sm text-neutral-medium">You've unlocked all achievements!</p>
+              </div>
+            )}
 
           </div>
 

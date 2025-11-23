@@ -1,0 +1,48 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/utils/supabase/server'
+import UserMenu from '@/components/UserMenu'
+import { MobileMenuButton } from '@/components/MobileSidebar'
+import SettingsClient from './SettingsClient'
+
+export default async function SettingsPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  // Get user profile with preferences
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('username, full_name, avatar_url, daily_goal, default_focus_duration, default_break_duration')
+    .eq('id', user.id)
+    .single()
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="h-16 border-b border-border bg-surface-elevated sticky top-0 z-20">
+        <div className="h-full mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2 sm:gap-4">
+          <MobileMenuButton />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base sm:text-lg font-bold text-on-surface">Settings</h1>
+            <p className="text-on-surface-secondary text-xs hidden sm:block">Manage your account and preferences</p>
+          </div>
+          <UserMenu email={user.email} username={profile?.username} />
+        </div>
+      </header>
+
+      <SettingsClient 
+        userEmail={user.email || ''}
+        username={profile?.username || ''}
+        fullName={profile?.full_name || ''}
+        dailyGoal={profile?.daily_goal || 8}
+        defaultFocusDuration={profile?.default_focus_duration || 25}
+        defaultBreakDuration={profile?.default_break_duration || 5}
+      />
+    </div>
+  )
+}
+
+

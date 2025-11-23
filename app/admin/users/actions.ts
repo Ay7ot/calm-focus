@@ -5,13 +5,11 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 import { requireAdmin } from '@/utils/admin'
 
-export async function toggleUserRole(formData: FormData) {
+export async function toggleUserRole(userId: string, currentRole: string) {
   await requireAdmin()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const userId = formData.get('userId') as string
-  const currentRole = formData.get('currentRole') as string
   const newRole = currentRole === 'admin' ? 'user' : 'admin'
 
   const { error } = await supabase
@@ -21,7 +19,7 @@ export async function toggleUserRole(formData: FormData) {
 
   if (error) {
     console.error('Error updating user role:', error)
-    redirect('/admin/users?error=' + encodeURIComponent(error.message))
+    return { success: false, error: error.message }
   }
 
   // Log admin action
@@ -33,53 +31,71 @@ export async function toggleUserRole(formData: FormData) {
   })
 
   revalidatePath('/admin/users')
-  redirect('/admin/users?success=role-updated')
+  return { success: true }
 }
 
-export async function banUser(formData: FormData) {
+export async function banUser(userId: string, reason: string, duration: 'permanent' | '7days' | '30days') {
   await requireAdmin()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const userId = formData.get('userId') as string
+  // Calculate ban expiry if not permanent
+  let bannedUntil = null
+  if (duration === '7days') {
+    const date = new Date()
+    date.setDate(date.getDate() + 7)
+    bannedUntil = date.toISOString()
+  } else if (duration === '30days') {
+    const date = new Date()
+    date.setDate(date.getDate() + 30)
+    bannedUntil = date.toISOString()
+  }
 
   const { error } = await supabase
     .from('profiles')
-    .update({ is_banned: true })
+    .update({
+      is_banned: true,
+      ban_reason: reason,
+      banned_until: bannedUntil,
+      banned_by: user!.id
+    })
     .eq('id', userId)
 
   if (error) {
     console.error('Error banning user:', error)
-    redirect('/admin/users?error=' + encodeURIComponent(error.message))
+    return { success: false, error: error.message }
   }
 
   // Log admin action
   await supabase.from('admin_audit_log').insert({
     admin_id: user!.id,
-    action: `Banned user`,
+    action: `Banned user: ${reason} (${duration})`,
     target_table: 'profiles',
     target_id: userId,
   })
 
   revalidatePath('/admin/users')
-  redirect('/admin/users?success=user-banned')
+  return { success: true }
 }
 
-export async function unbanUser(formData: FormData) {
+export async function unbanUser(userId: string) {
   await requireAdmin()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const userId = formData.get('userId') as string
-
   const { error } = await supabase
     .from('profiles')
-    .update({ is_banned: false })
+    .update({
+      is_banned: false,
+      ban_reason: null,
+      banned_until: null,
+      banned_by: null
+    })
     .eq('id', userId)
 
   if (error) {
     console.error('Error unbanning user:', error)
-    redirect('/admin/users?error=' + encodeURIComponent(error.message))
+    return { success: false, error: error.message }
   }
 
   // Log admin action
@@ -91,6 +107,6 @@ export async function unbanUser(formData: FormData) {
   })
 
   revalidatePath('/admin/users')
-  redirect('/admin/users?success=user-unbanned')
+  return { success: true }
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, Plus, Trash2, MessageSquare, Lightbulb, CheckCircle, XCircle } from 'lucide-react'
+import { FileText, Plus, Trash2, MessageSquare, Lightbulb, CheckCircle, XCircle, Eye, Search, Filter as FilterIcon } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import UserMenu from '@/components/UserMenu'
 import { MobileMenuButton } from '@/components/MobileSidebar'
@@ -11,6 +11,8 @@ import Modal from '@/components/Modal'
 import ConfirmModal from '@/components/ConfirmModal'
 import Toast from '@/components/Toast'
 import { deleteDailyTip, deleteForumPost } from './actions'
+import PostDetailModal from './PostDetailModal'
+import CommentsTab from './CommentsTab'
 
 interface DailyTip {
   id: number
@@ -35,6 +37,7 @@ interface ForumPost {
 
 export default function ContentPage() {
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState<'tips' | 'posts' | 'comments'>('posts')
   const [tips, setTips] = useState<DailyTip[]>([])
   const [posts, setPosts] = useState<ForumPost[]>([])
   const [user, setUser] = useState<any>(null)
@@ -43,6 +46,9 @@ export default function ContentPage() {
   const [isCreateTipOpen, setIsCreateTipOpen] = useState(false)
   const [deletingTip, setDeletingTip] = useState<DailyTip | null>(null)
   const [deletingPost, setDeletingPost] = useState<ForumPost | null>(null)
+  const [selectedPostId, setSelectedPostId] = useState<number | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterCategory, setFilterCategory] = useState<string>('all')
   const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' | 'info' | 'warning' } | null>(null)
   const [showToast, setShowToast] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -276,16 +282,10 @@ export default function ContentPage() {
         </div>
       </header>
 
-      <div className=" mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-12 space-y-8">
-        <BackButton />
-
-        {/* Daily Tips Section */}
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-on-surface flex items-center gap-2">
-              <Lightbulb size={24} className="text-accent" />
-              Daily Tips Library
-            </h2>
+      <div className=" mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-12">
+        <div className="flex items-center justify-between mb-6">
+          <BackButton />
+          {activeTab === 'tips' && (
             <button
               onClick={() => setIsCreateTipOpen(true)}
               className="btn btn-primary flex items-center gap-2"
@@ -293,7 +293,55 @@ export default function ContentPage() {
               <Plus size={20} />
               <span className="hidden sm:inline">New Tip</span>
             </button>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="mb-6 border-b border-border">
+          <div className="flex gap-1 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('posts')}
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'posts'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-on-surface-secondary hover:text-on-surface'
+              }`}
+            >
+              <MessageSquare size={18} className="inline mr-2" />
+              Forum Posts
+            </button>
+            <button
+              onClick={() => setActiveTab('comments')}
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'comments'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-on-surface-secondary hover:text-on-surface'
+              }`}
+            >
+              <MessageSquare size={18} className="inline mr-2" />
+              Comments
+            </button>
+            <button
+              onClick={() => setActiveTab('tips')}
+              className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'tips'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-on-surface-secondary hover:text-on-surface'
+              }`}
+            >
+              <Lightbulb size={18} className="inline mr-2" />
+              Daily Tips
+            </button>
           </div>
+        </div>
+
+        {/* Tips Tab */}
+        {activeTab === 'tips' && (
+          <div>
+            <h2 className="text-2xl font-bold text-on-surface flex items-center gap-2 mb-6">
+              <Lightbulb size={24} className="text-accent" />
+              Daily Tips Library
+            </h2>
 
           {tips.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -338,57 +386,119 @@ export default function ContentPage() {
               </button>
             </div>
           )}
-        </div>
+          </div>
+        )}
 
-        {/* Forum Moderation Section */}
-        <div>
-          <h2 className="text-2xl font-bold text-on-surface flex items-center gap-2 mb-6">
-            <MessageSquare size={24} className="text-secondary" />
-            Forum Moderation
-          </h2>
+        {/* Posts Tab */}
+        {activeTab === 'posts' && (
+          <div>
+            <h2 className="text-2xl font-bold text-on-surface flex items-center gap-2 mb-6">
+              <MessageSquare size={24} className="text-secondary" />
+              Forum Moderation
+            </h2>
 
-          {posts.length > 0 ? (
-            <div className="card divide-y divide-border">
-              {posts.map((post) => (
-                <div key={post.id} className="p-4 hover:bg-backplate transition-colors">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <span className="text-xs font-semibold uppercase text-primary bg-primary/10 px-2 py-1 rounded-md">
-                          {post.category}
-                        </span>
-                        <span className="text-xs text-on-surface-secondary">
-                          by {post.profiles?.username || 'Anonymous'}
-                        </span>
-                        <span className="text-xs text-on-surface-secondary">
-                          • {new Date(post.created_at).toLocaleDateString()}
-                        </span>
+            {/* Search & Filter */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-6">
+              <div className="flex-1 relative">
+                <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-secondary" />
+                <input
+                  type="text"
+                  placeholder="Search posts by title or content..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full h-10 pl-10 pr-4 rounded-lg border border-border bg-backplate text-on-surface placeholder:text-neutral-medium focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                />
+              </div>
+              <div className="sm:w-48">
+                <select
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg border border-border bg-backplate text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                >
+                  <option value="all">All Categories</option>
+                  <option value="question">Questions</option>
+                  <option value="discussion">Discussions</option>
+                  <option value="achievement">Achievements</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            {posts.filter(post => {
+              const matchesSearch = searchQuery === '' ||
+                post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                post.content.toLowerCase().includes(searchQuery.toLowerCase())
+              const matchesCategory = filterCategory === 'all' || post.category === filterCategory
+              return matchesSearch && matchesCategory
+            }).length > 0 ? (
+              <div className="card divide-y divide-border">
+                {posts.filter(post => {
+                  const matchesSearch = searchQuery === '' ||
+                    post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    post.content.toLowerCase().includes(searchQuery.toLowerCase())
+                  const matchesCategory = filterCategory === 'all' || post.category === filterCategory
+                  return matchesSearch && matchesCategory
+                }).map((post) => (
+                  <div key={post.id} className="p-4 hover:bg-backplate transition-colors cursor-pointer" onClick={() => setSelectedPostId(post.id)}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className="text-xs font-semibold uppercase text-primary bg-primary/10 px-2 py-1 rounded-md">
+                            {post.category}
+                          </span>
+                          <span className="text-xs text-on-surface-secondary">
+                            by {post.profiles?.username || 'Anonymous'}
+                          </span>
+                          <span className="text-xs text-on-surface-secondary">
+                            • {new Date(post.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-semibold text-on-surface mb-1 truncate">
+                          {post.title}
+                        </h3>
+                        <p className="text-sm text-on-surface-secondary line-clamp-2">
+                          {post.content}
+                        </p>
                       </div>
-                      <h3 className="text-base font-semibold text-on-surface mb-1 truncate">
-                        {post.title}
-                      </h3>
-                      <p className="text-sm text-on-surface-secondary line-clamp-2">
-                        {post.content}
-                      </p>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedPostId(post.id)
+                          }}
+                          className="p-2 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                          title="View details"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setDeletingPost(post)
+                          }}
+                          className="p-2 text-error hover:bg-error/10 rounded-lg transition-colors"
+                          title="Delete post"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => setDeletingPost(post)}
-                      className="btn btn-ghost text-error hover:bg-error/10 flex items-center gap-2 flex-shrink-0"
-                    >
-                      <Trash2 size={16} />
-                      <span className="hidden sm:inline">Delete</span>
-                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12 card">
-              <MessageSquare size={48} className="mx-auto text-neutral-medium mb-4 opacity-50" />
-              <p className="text-on-surface-secondary">No forum posts to moderate</p>
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 card">
+                <MessageSquare size={48} className="mx-auto text-neutral-medium mb-4 opacity-50" />
+                <p className="text-on-surface-secondary">
+                  {searchQuery || filterCategory !== 'all' ? 'No posts found matching your filters' : 'No forum posts to moderate'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Comments Tab */}
+        {activeTab === 'comments' && <CommentsTab />}
       </div>
 
       {/* Create Tip Modal */}
@@ -547,6 +657,23 @@ export default function ContentPage() {
           confirmText={isSubmitting ? 'Deleting...' : 'Delete Post'}
           cancelText="Cancel"
           variant="danger"
+        />
+      )}
+
+      {/* Post Detail Modal */}
+      {selectedPostId && (
+        <PostDetailModal
+          postId={selectedPostId}
+          onClose={() => setSelectedPostId(null)}
+          onPostDeleted={async () => {
+            await fetchData()
+            setToast({ message: 'Post deleted successfully', variant: 'success' })
+            setShowToast(true)
+          }}
+          onCommentDeleted={async () => {
+            setToast({ message: 'Comment deleted successfully', variant: 'success' })
+            setShowToast(true)
+          }}
         />
       )}
 

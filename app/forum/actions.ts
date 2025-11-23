@@ -17,6 +17,10 @@ export async function createPost(formData: FormData) {
   const content = formData.get('content') as string
   const category = formData.get('category') as string
 
+  if (!title || !content || !category) {
+    return { error: 'Please fill in all required fields.' }
+  }
+
   const { error } = await supabase.from('forum_posts').insert({
     title,
     content,
@@ -25,12 +29,11 @@ export async function createPost(formData: FormData) {
   })
 
   if (error) {
-    console.error(error)
-    // Handle error (in a real app, return validation errors)
-    return
+    console.error('Error creating post:', error)
+    return { error: error.message || 'Failed to create post. Please try again.' }
   }
 
   revalidatePath('/forum')
-  redirect('/forum')
+  return { success: true }
 }
 

@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users as UsersIcon, ShieldCheck, Shield, Ban, CheckCircle, Search } from 'lucide-react'
+import { Users as UsersIcon, ShieldCheck, Shield, Ban, CheckCircle, Search, Eye } from 'lucide-react'
 import { createClient } from '@/utils/supabase/client'
 import UserMenu from '@/components/UserMenu'
 import { MobileMenuButton } from '@/components/MobileSidebar'
 import BackButton from '@/components/BackButton'
 import UserAvatar from '@/components/UserAvatar'
 import ConfirmModal from '@/components/ConfirmModal'
+import BanUserModal from '@/components/BanUserModal'
+import UserDetailModal from '@/components/UserDetailModal'
+import Toast from '@/components/Toast'
 import { toggleUserRole, banUser, unbanUser } from './actions'
 import { getAllUsersWithEmails } from './serverActions'
 
@@ -18,6 +21,8 @@ interface Profile {
   email: string
   role: string
   is_banned: boolean
+  ban_reason?: string | null
+  banned_until?: string | null
   created_at: string
   session_count: number
   post_count: number
@@ -32,9 +37,13 @@ export default function UsersPage() {
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'promote' | 'demote' | 'ban' | 'unban'
+    type: 'promote' | 'demote' | 'unban'
     user: Profile
   } | null>(null)
+  const [banningUser, setBanningUser] = useState<Profile | null>(null)
+  const [viewingUser, setViewingUser] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -71,7 +80,7 @@ export default function UsersPage() {
         // Merge data
         const usersData = profiles.map((p) => ({
           ...p,
-          email: (emails && emails[p.id]) || 'N/A',
+          email: p.email || (emails && emails[p.id]) || 'N/A',
           session_count: (sessionCounts && sessionCounts[p.id]) || 0,
           post_count: (postCounts && postCounts[p.id]) || 0,
         }))
@@ -258,10 +267,37 @@ export default function UsersPage() {
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         {u.is_banned ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-error/10 text-error">
-                            <Ban size={14} />
-                            Banned
-                          </span>
+                          <div className="group relative inline-block">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-error/10 text-error cursor-help">
+                              <Ban size={14} />
+                              Banned
+                            </span>
+                            {/* Tooltip */}
+                            {(u.ban_reason || u.banned_until) && (
+                              <div className="absolute left-0 top-full mt-2 z-50 w-64 p-3 bg-surface-elevated border border-border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                                {u.ban_reason && (
+                                  <div className="mb-2">
+                                    <p className="text-xs font-semibold text-on-surface mb-1">Reason:</p>
+                                    <p className="text-xs text-on-surface-secondary">{u.ban_reason}</p>
+                                  </div>
+                                )}
+                                {u.banned_until && (
+                                  <div>
+                                    <p className="text-xs font-semibold text-on-surface mb-1">Expires:</p>
+                                    <p className="text-xs text-on-surface-secondary">
+                                      {new Date(u.banned_until).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric',
+                                        hour: 'numeric',
+                                        minute: 'numeric',
+                                      })}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-success/10 text-success">
                             <CheckCircle size={14} />
@@ -270,9 +306,18 @@ export default function UsersPage() {
                         )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          {u.id !== currentUser?.id ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => setViewingUser(u.id)}
+                            className="text-xs text-secondary hover:underline flex items-center gap-1"
+                            title="View details"
+                          >
+                            <Eye size={12} />
+                            <span className="hidden sm:inline">View</span>
+                          </button>
+                          {u.id !== currentUser?.id && (
                             <>
+                              <span className="text-neutral-medium">•</span>
                               <button
                                 onClick={() =>
                                   setConfirmAction({
@@ -294,15 +339,13 @@ export default function UsersPage() {
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => setConfirmAction({ type: 'ban', user: u })}
+                                  onClick={() => setBanningUser(u)}
                                   className="text-xs text-error hover:underline"
                                 >
                                   Ban
                                 </button>
                               )}
                             </>
-                          ) : (
-                            <span className="text-xs text-on-surface-secondary italic">You</span>
                           )}
                         </div>
                       </td>
@@ -331,71 +374,163 @@ export default function UsersPage() {
       {confirmAction && (
         <ConfirmModal
           isOpen={!!confirmAction}
-          onClose={() => setConfirmAction(null)}
-          onConfirm={() => {
-            const form = document.createElement('form')
-            form.method = 'POST'
-
-            const userIdInput = document.createElement('input')
-            userIdInput.type = 'hidden'
-            userIdInput.name = 'userId'
-            userIdInput.value = confirmAction.user.id
-            form.appendChild(userIdInput)
-
-            if (confirmAction.type === 'promote' || confirmAction.type === 'demote') {
-              const roleInput = document.createElement('input')
-              roleInput.type = 'hidden'
-              roleInput.name = 'currentRole'
-              roleInput.value = confirmAction.user.role || 'user'
-              form.appendChild(roleInput)
-
-              document.body.appendChild(form)
-              const formData = new FormData(form)
-              toggleUserRole(formData)
-            } else if (confirmAction.type === 'ban') {
-              document.body.appendChild(form)
-              const formData = new FormData(form)
-              banUser(formData)
-            } else if (confirmAction.type === 'unban') {
-              document.body.appendChild(form)
-              const formData = new FormData(form)
-              unbanUser(formData)
+          onClose={() => {
+            if (!isSubmitting) {
+              setConfirmAction(null)
             }
-
-            document.body.removeChild(form)
           }}
+          onConfirm={async () => {
+            setIsSubmitting(true)
+
+            try {
+              let result
+
+              if (confirmAction.type === 'promote' || confirmAction.type === 'demote') {
+                result = await toggleUserRole(confirmAction.user.id, confirmAction.user.role || 'user')
+              } else if (confirmAction.type === 'unban') {
+                result = await unbanUser(confirmAction.user.id)
+              }
+
+              if (result?.success) {
+                // Show success toast
+                const actionText =
+                  confirmAction.type === 'promote' ? 'promoted to admin' :
+                    confirmAction.type === 'demote' ? 'demoted to user' : 'unbanned'
+
+                setToast({
+                  message: `User ${actionText} successfully`,
+                  variant: 'success'
+                })
+
+                // Close modal
+                setConfirmAction(null)
+
+                // Refresh user list
+                const supabase = createClient()
+                const { profiles, emails, sessionCounts, postCounts } = await getAllUsersWithEmails()
+                const usersData = profiles.map((p) => ({
+                  ...p,
+                  email: p.email || (emails && emails[p.id]) || 'N/A',
+                  session_count: (sessionCounts && sessionCounts[p.id]) || 0,
+                  post_count: (postCounts && postCounts[p.id]) || 0,
+                }))
+                setUsers(usersData)
+                setFilteredUsers(usersData)
+              } else {
+                // Show error toast
+                setToast({
+                  message: result?.error || 'An error occurred',
+                  variant: 'error'
+                })
+              }
+            } catch (error) {
+              console.error('Error performing action:', error)
+              setToast({
+                message: 'An unexpected error occurred',
+                variant: 'error'
+              })
+            } finally {
+              setIsSubmitting(false)
+            }
+          }}
+          isLoading={isSubmitting}
           title={
             confirmAction.type === 'promote'
               ? 'Promote to Admin?'
               : confirmAction.type === 'demote'
                 ? 'Demote to User?'
-                : confirmAction.type === 'ban'
-                  ? 'Ban User?'
-                  : 'Unban User?'
+                : 'Unban User?'
           }
           message={
             confirmAction.type === 'promote'
               ? `Grant admin access to ${confirmAction.user.username || confirmAction.user.email}? They will have full access to all admin features.`
               : confirmAction.type === 'demote'
                 ? `Remove admin access from ${confirmAction.user.username || confirmAction.user.email}? They will become a regular user.`
-                : confirmAction.type === 'ban'
-                  ? `Ban ${confirmAction.user.username || confirmAction.user.email}? They will not be able to access the app.`
-                  : `Unban ${confirmAction.user.username || confirmAction.user.email}? They will regain access to the app.`
+                : `Unban ${confirmAction.user.username || confirmAction.user.email}? They will regain access to the app.`
           }
           confirmText={
             confirmAction.type === 'promote'
               ? 'Promote'
               : confirmAction.type === 'demote'
                 ? 'Demote'
-                : confirmAction.type === 'ban'
-                  ? 'Ban User'
-                  : 'Unban User'
+                : 'Unban User'
           }
           variant={
-            confirmAction.type === 'ban' ? 'danger' : confirmAction.type === 'unban' ? 'success' : 'warning'
+            confirmAction.type === 'unban' ? 'success' : 'warning'
           }
         />
       )}
+
+      {/* Ban User Modal */}
+      {banningUser && (
+        <BanUserModal
+          isOpen={!!banningUser}
+          username={banningUser.username || banningUser.email}
+          onClose={() => {
+            if (!isSubmitting) {
+              setBanningUser(null)
+            }
+          }}
+          onConfirm={async (reason, duration) => {
+            setIsSubmitting(true)
+
+            try {
+              const result = await banUser(banningUser.id, reason, duration)
+
+              if (result?.success) {
+                setToast({
+                  message: `User banned successfully`,
+                  variant: 'success'
+                })
+
+                setBanningUser(null)
+
+                // Refresh user list
+                const supabase = createClient()
+                const { profiles, emails, sessionCounts, postCounts } = await getAllUsersWithEmails()
+                const usersData = profiles.map((p) => ({
+                  ...p,
+                  email: p.email || (emails && emails[p.id]) || 'N/A',
+                  session_count: (sessionCounts && sessionCounts[p.id]) || 0,
+                  post_count: (postCounts && postCounts[p.id]) || 0,
+                }))
+                setUsers(usersData)
+                setFilteredUsers(usersData)
+              } else {
+                setToast({
+                  message: result?.error || 'Failed to ban user',
+                  variant: 'error'
+                })
+              }
+            } catch (error) {
+              console.error('Error banning user:', error)
+              setToast({
+                message: 'An unexpected error occurred',
+                variant: 'error'
+              })
+            } finally {
+              setIsSubmitting(false)
+            }
+          }}
+          isLoading={isSubmitting}
+        />
+      )}
+
+      {/* User Detail Modal */}
+      {viewingUser && (
+        <UserDetailModal
+          userId={viewingUser}
+          onClose={() => setViewingUser(null)}
+        />
+      )}
+
+      {/* Toast Notification */}
+      <Toast
+        isOpen={toast !== null}
+        message={toast?.message || ''}
+        variant={toast?.variant || 'success'}
+        onClose={() => setToast(null)}
+      />
     </div>
   )
 }
